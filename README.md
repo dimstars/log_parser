@@ -1,1 +1,2 @@
 # log_parser
+主要用于oceanbase开源代码的日志统计和分析
