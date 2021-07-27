@@ -3,6 +3,7 @@
 
 import re
 import sys
+import datetime
 
 counts = {}
 rates = {}
@@ -32,8 +33,6 @@ def get_type(line):
     if len(str_list) < 3:
         return ""
     type_str = str_list[2]
-    #print(type_str)
-    #print(switch_type(type_str))
     type_ = switch_type(type_str)
     return type_
     
@@ -44,7 +43,6 @@ def get_module(line):
     if not module_str.endswith(']'):
         return ""
     module_str = module_str[1:len(module_str)-1]
-    #print(module_str)
     return module_str
 
 def get_file(line):
@@ -52,15 +50,27 @@ def get_file(line):
     if file_str == None:
         return ""
     file_str = file_str.group()
-    #file_str = file_str[0:file_str.find(':')]
     return file_str
 
-def read_file(file_):
+def get_time(line):
+    time_str = line.split(' ')[0] + ' ' + line.split(' ')[1]
+    time_str = time_str[1:len(time_str) - 1]
+    try:
+        time = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        time = None
+    return time
+
+def read_file(file_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"), end_time = datetime.datetime.now()):
+    print("select from [%s] to [%s]" % (start_time.strftime("%Y-%m-%d %H:%M:%S"), end_time.strftime("%Y-%m-%d %H:%M:%S")))
     # 初始化
     counts["blank_num"] = 0
     counts["no_type"]   = 0
     counts["log_num"]   = 0
     counts["line_num"]  = 0
+    time_flag = False
+    if start_time == datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"):
+        time_flag = True
     # 打开文件
     fr=open(file_,'r')
     # 读取文件所有行
@@ -68,17 +78,31 @@ def read_file(file_):
 
     # 依次迭代所有行
     for line in content:
-        counts["line_num"] += 1
         # 去除空格
         line=line.strip()
-        #如果是空行，则跳过
-        if len(line)==0:
-            counts["blank_num"] += 1
-            continue
+        # 如果满足时间条件
+        if time_flag:
+            counts["line_num"] += 1
+            # 如果是空行，则跳过
+            if len(line)==0:
+                counts["blank_num"] += 1
+                continue
         log_type = get_type(line)
-        if log_type == "":
-            counts["no_type"] += 1
+        if time_flag:
+            # 如果没有类型，则跳过
+            if log_type == "":
+                counts["no_type"] += 1
+                continue
+        log_time = get_time(line)
+        if log_time == None:
             continue
+        # 小于时间区域，不记录
+        if log_time < start_time:
+            continue
+        # 大于时间区域，直接返回
+        elif log_time > end_time:
+            return True
+        time_flag = True
         counts["log_num"] += 1
         if log_type not in count_type.keys():
             count_type[log_type] = 1
@@ -109,6 +133,8 @@ def cal_rate():
     count_file_s = {}
     count_module_s = sorted(count_module, cmp=lambda x,y:cmp(count_module[x],count_module[y]), reverse=True)
     sum_ = float(counts["line_num"])
+    if sum_ == 0:
+        return False
     for item in counts:
         rates[item] = (float(counts[item]) / sum_) * 100
     for module in count_module_s:
@@ -121,6 +147,9 @@ def cal_rate():
 
 def print_result():
     print("[parse result]")
+    if counts["line_num"] == 0:
+        print("no log meets the condition")
+        return False
     print("count     rate     module/file")
     item = "line_num"
     print('%-8d  %6.2f%%  %s' % (counts[item], rates[item], item))
@@ -147,8 +176,17 @@ def print_result():
         print("")
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2 and len(sys.argv) != 4:
+        print("invalid arguments! please input like this:\n"
+              "python parse.py log_file_path [xxxx-xx-xx-xx:xx:xx] [xxxx-xx-xx-xx:xx:xx]")
+        exit(-1)
     print("start parse\n")
-    read_file(sys.argv[1])
+    if len(sys.argv) == 2:
+        read_file(sys.argv[1])
+    else:
+        start_time = datetime.datetime.strptime(sys.argv[2], "%Y-%m-%d-%H:%M:%S")
+        end_time = datetime.datetime.strptime(sys.argv[3], "%Y-%m-%d-%H:%M:%S")
+        read_file(sys.argv[1], start_time, end_time)
     cal_rate()
     print_result()
     print("\nend parse")
