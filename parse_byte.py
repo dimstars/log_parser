@@ -8,44 +8,24 @@ import datetime
 sizes = {}
 rates = {}
 size_type = {}
-size_module = {}
-size_file = {}
+size_line = {}
 rate_type = {}
-rate_module = {}
 rate_file = {}
 
-def switch_type(str):
-    if str == 'INFO':
-        return str
-    elif str == 'WARN':
-        return str
-    elif str == 'TRACE':
-        return str
-    elif str == 'DEBUG':
-        return str
-    elif str == 'ERROR':
-        return str
-    else:
-        return ""
+types = {'INFO', 'WARN', 'TRACE', 'DEBUG', 'ERROR'}
 
 def get_type(line):
     str_list = line.split(' ')
     if len(str_list) < 3:
         return ""
     type_str = str_list[2]
-    type_ = switch_type(type_str)
+    if type_str in types:
+        type_ = type_str
+    else:
+        type_ = ""
     return type_
-    
-def get_module(line):
-    module_str = line.split(' ')[4]
-    if not module_str.startswith('['):
-        return ""
-    if not module_str.endswith(']'):
-        return ""
-    module_str = module_str[1:len(module_str)-1]
-    return module_str
 
-def get_file(line):
+def get_line(line):
     file_str = re.search(r'[a-z_]+\.[a-z]+:[1-9][0-9]*', line, 0)
     if file_str == None:
         return ""
@@ -65,9 +45,9 @@ def read_file(file_, start_time = datetime.datetime.strptime("1970-01-01 00:00:0
     print("select from [%s] to [%s]" % (start_time.strftime("%Y-%m-%d %H:%M:%S"), end_time.strftime("%Y-%m-%d %H:%M:%S")))
     # 初始化
     sizes["blank_size"] = 0
-    sizes["no_type"]   = 0
+    sizes["no_type"]    = 0
     sizes["log_size"]   = 0
-    sizes["sum_size"]  = 0
+    sizes["sum_size"]   = 0
     time_flag = False
     if start_time == datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"):
         time_flag = True
@@ -113,71 +93,49 @@ def read_file(file_, start_time = datetime.datetime.strptime("1970-01-01 00:00:0
         else:
             size_type[log_type] += size
 
-        module_name = get_module(line)
-        if module_name not in size_file.keys():
-            size_file[module_name] = {}
-        if module_name not in size_module.keys():
-            size_module[module_name] = size
-        else:
-            size_module[module_name] += size
-
-        file_name = get_file(line)
-        if file_name == "":
+        line_name = get_line(line)
+        if line_name == "":
             continue
-        if file_name not in size_file[module_name].keys():
-            size_file[module_name][file_name] = size
+        if line_name not in size_line.keys():
+            size_line[line_name] = size
         else:
-            size_file[module_name][file_name] += size
+            size_line[line_name] += size
 
     fr.close()
 
 def cal_rate():
-    global size_module_s
-    global size_file_s
-    size_file_s = {}
-    size_module_s = sorted(size_module, cmp=lambda x,y:cmp(size_module[x],size_module[y]), reverse=True)
+    global size_line_s
+    size_line_s = {}
     sum_ = float(sizes["sum_size"])
     if sum_ == 0:
         return False
     for item in sizes:
         rates[item] = (float(sizes[item]) / sum_) * 100
-    for module in size_module_s:
-        rate_module[module] = (float(size_module[module]) / sum_) * 100
-        rate_file[module] = {}
-        size_file_s[module] = sorted(size_file[module], cmp=lambda x,y:cmp(size_file[module][x],size_file[module][y]), reverse=True)
-        for file_ in size_file[module]:
-            rate_file[module][file_] = (float(size_file[module][file_]) / sum_) * 100
-
+    size_line_s = sorted(size_line, cmp=lambda x,y:cmp(size_line[x],size_line[y]), reverse=True)
+    for line in size_line:
+        rate_file[line] = (float(size_line[line]) / sum_) * 100
 
 def print_result():
     print("[parse result]")
     if sizes["sum_size"] == 0:
         print("no log meets the condition")
         return False
-    print("size     rate     module/file")
+    print("    size      rate     module/file")
     item = "sum_size"
-    print('%-10d  %6.2f%%  %s' % (sizes[item], rates[item], item))
+    print('%10d  %6.2f%%  %s' % (sizes[item], rates[item], item))
     for item in sizes:
         if item == "sum_size":
             continue
-        print('%-10d  %6.2f%%  %s' % (sizes[item], rates[item], item))
+        print('%10d  %6.2f%%  %s' % (sizes[item], rates[item], item))
     print("")
-    n1 = 0
-    for module in size_module_s:
-        n1 += 1
-        if n1 > 10:
+    n = 0
+    for line in size_line_s:
+        n += 1
+        if n > 20:
             break
-        if module == "":
-            print('%-10d  %6.2f%%  (no mudule)' % (size_module[module], rate_module[module]))
-        else:
-            print('%-10d  %6.2f%%  [%s]' % (size_module[module], rate_module[module], module))
-        n2 = 0
-        for file_ in size_file_s[module]:
-            n2 += 1
-            if n2 > 10:
-                break
-            print('  %-10d%6.2f%%  %s'% (size_file[module][file_], rate_file[module][file_], file_))
-        print("")
+        if rate_file[line] < 0.1:
+            break
+        print('%10d  %6.2f%%  %s'% (size_line[line], rate_file[line], line))
 
 if __name__ == '__main__':
     if len(sys.argv) != 2 and len(sys.argv) != 4:

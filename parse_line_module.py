@@ -163,6 +163,8 @@ def print_result():
         n1 += 1
         if n1 > 10:
             break
+        if rate_module[module] < 0.1:
+            break
         if module == "":
             print('%-8d  %6.2f%%  (no mudule)' % (count_module[module], rate_module[module]))
         else:
@@ -171,6 +173,8 @@ def print_result():
         for file_ in count_file_s[module]:
             n2 += 1
             if n2 > 10:
+                break
+            if rate_file[module][file_] < 0.1:
                 break
             print('  %-8d%6.2f%%  %s'% (count_file[module][file_], rate_file[module][file_], file_))
         print("")
