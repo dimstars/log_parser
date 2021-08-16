@@ -4,7 +4,7 @@
 import re
 import os
 import sys
-import datetime
+import datetime, time
 
 sizes = {}
 rates = {}
@@ -40,6 +40,16 @@ def get_file_time(file):
         except ValueError:
             time = None
     return time
+
+def reset():
+    sizes.clear()
+    rates.clear()
+    size_line.clear()
+    rate_line.clear()
+    sizes["blank_size"] = 0
+    sizes["no_time"]    = 0
+    sizes["log_size"]   = 0
+    sizes["sum_size"]   = 0
 
 def parse_file(file_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"), end_time = datetime.datetime.now()):
     # 初始化
@@ -89,9 +99,7 @@ def parse_file(file_, start_time = datetime.datetime.strptime("1970-01-01 00:00:
 
     fr.close()
 
-def parse_dir(dir_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"), end_time = datetime.datetime.now()):
-    print("select from [%s] to [%s]" % (start_time.strftime("%Y-%m-%d %H:%M:%S"), end_time.strftime("%Y-%m-%d %H:%M:%S")))
-    # 初始化文件列表
+def get_file_from_dir(dir_, start_time, end_time):
     file_list = {}
     file_list["election"] = []
     file_list["observer"] = []
@@ -106,7 +114,7 @@ def parse_dir(dir_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00
             continue
         file_time = get_file_time(name)
         # 如果没有时间戳，或时间戳不符合条件
-        if file_time != None and (file_time < start_time or file_time > end_time):
+        if file_time != None and start_time != None and (file_time < start_time or file_time > end_time):
             continue
         # 满足条件，进行分类
         if "election.log" in name:
@@ -115,26 +123,58 @@ def parse_dir(dir_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00
             file_list["observer"].append(file_path)
         elif "rootservice.log" in name:
             file_list["rootservice"].append(file_path)
+    return file_list
+
+def parse_dir(dir_, start_time = datetime.datetime.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"), end_time = datetime.datetime.now()):
+    print("select from [%s] to [%s]" % (start_time.strftime("%Y-%m-%d %H:%M:%S"), end_time.strftime("%Y-%m-%d %H:%M:%S")))
+    # 初始化文件列表
+    file_list = get_file_from_dir(dir_, start_time, end_time)
     
     # 对文件进行分析
     for type_ in file_list:
         if len(file_list[type_]) == 0:
             print("\n(no %s log file)" % type_)
             continue
-        sizes.clear()
-        rates.clear()
-        size_line.clear()
-        rate_line.clear()
-        sizes["blank_size"] = 0
-        sizes["no_time"]    = 0
-        sizes["log_size"]   = 0
-        sizes["sum_size"]   = 0
+        reset()
         for file in file_list[type_]:
             parse_file(file, start_time, end_time)
         cal_rate()
         print("\n[parse result of %s]" % type_)
         print_result()
 
+def check_file_time(file_time, last_time, seconds):
+    s1 = time.mktime(file_time.timetuple())
+    s2 = time.mktime(last_time.timetuple())
+    if (s1 - s2) > -seconds and (s1 - s2) < seconds:
+        return True
+    return False
+
+def parse_auto(dir_, seconds):
+    file_list = get_file_from_dir(dir_, None, None)
+    file_list_auto = {}
+    file_list_auto["election"] = []
+    file_list_auto["observer"] = []
+    file_list_auto["rootservice"] = []
+    for type_ in file_list:
+        file_list[type_].sort()
+        if len(file_list[type_]) == 0:
+            print("\n(no %s log file)" % type_)
+            continue
+        last_time = None
+        for file_path in file_list[type_]:
+            file_time = get_file_time(file_path)
+            if last_time != None and file_time != None and check_file_time(file_time, last_time, seconds):
+                file_list_auto[type_].append(file_path)
+            last_time = file_time
+        if len(file_list_auto[type_]) == 0:
+            print("\n(no %s log file)" % type_)
+            continue
+        reset()
+        for file in file_list_auto[type_]:
+            parse_file(file)
+        cal_rate()
+        print("\n[parse result of %s]" % type_)
+        print_result()
 
 def cal_rate():
     global size_line_s
@@ -171,15 +211,22 @@ def print_result():
 
 if __name__ == '__main__':
     argv_num = len(sys.argv)
-    if argv_num < 2 and argv_num > 4:
+    if argv_num < 2 or argv_num > 4:
         print("invalid arguments! please input like this:\n"
-              "python parse.py log_dir_path [xxxx-xx-xx-xx:xx:xx] [xxxx-xx-xx-xx:xx:xx]")
+              "python parse.py log_dir_path [xxxx-xx-xx-xx:xx:xx] [xxxx-xx-xx-xx:xx:xx]\n"
+              "python parse.py log_dir_path auto xxx(s)")
         exit(-1)
     path = sys.argv[1]
     if not os.path.isdir(path):
         print("\"%s\" is not a directory")
         exit(-1)
     if argv_num >= 3:
+        if sys.argv[2] == "auto":
+            if argv_num == 4:
+                parse_auto(path, int(sys.argv[3]))
+            else:
+                print("need time")
+            exit(0)
         try:
             start_time = datetime.datetime.strptime(sys.argv[2], "%Y-%m-%d-%H:%M:%S")
         except ValueError:
